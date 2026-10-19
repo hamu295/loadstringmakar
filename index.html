@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>Loadstring Maker</title>
+<style>
+  body { font-family: sans-serif; max-width: 760px; margin: 40px auto; padding: 0 16px; }
+  label { display: block; margin-top: 16px; font-weight: bold; }
+  input, textarea { width: 100%; font-family: monospace; padding: 6px; box-sizing: border-box; }
+  textarea { height: 160px; }
+  button { margin-top: 8px; padding: 8px 16px; cursor: pointer; }
+  #status { color: #666; margin-top: 8px; white-space: pre-wrap; }
+  .note { color: #888; font-size: 12px; margin-top: 4px; }
+</style>
+</head>
+<body>
+<h1>Loadstring Maker</h1>
+<p>paste → gist save → loadstring url</p>
+
+<label for="token">GitHub Token（初回のみ入力。以後この端末に自動保存）</label>
+<input id="token" type="password" placeholder="ghp_...">
+<div class="note">トークンはこのブラウザ内にのみ保存され、外部には送信されません</div>
+
+<label for="script">入力スクリプト</label>
+<textarea id="script" placeholder="ここにLuaスクリプトを貼り付け"></textarea>
+
+<button id="generate">保存してLoadstring生成</button>
+
+<label for="result">出力（Loadstring URL）</label>
+<textarea id="result" readonly></textarea>
+
+<button id="copy">コピー</button>
+<button id="clear">クリア</button>
+
+<div id="status"></div>
+
+<script>
+const TOKEN_KEY = "gh_token";
+
+// 起動時に保存済みトークンを復元
+const tokenInput = document.getElementById("token");
+tokenInput.value = localStorage.getItem(TOKEN_KEY) || "";
+
+document.getElementById("generate").addEventListener("click", async () => {
+  const token = tokenInput.value.trim();
+  const script = document.getElementById("script").value.trim();
+  const status = document.getElementById("status");
+  const result = document.getElementById("result");
+
+  if (!token) { status.textContent = "GitHub Tokenを入力してください"; return; }
+  if (!script) { status.textContent = "スクリプトが空です"; return; }
+
+  // トークンをこの端末に保存
+  localStorage.setItem(TOKEN_KEY, token);
+
+  status.textContent = "Gistに保存中...";
+  result.value = "";
+
+  try {
+    const res = await fetch("https://api.github.com/gists", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Accept": "application/vnd.github+json",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        description: "loadstring script",
+        public: false,
+        files: {
+          "script.lua": { content: script }
+        }
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(`HTTP ${res.status} ${err.message || ""}`);
+    }
+
+    const data = await res.json();
+    // raw_url は files["script.lua"].raw_url
+    const rawUrl = data.files["script.lua"].raw_url;
+    result.value = `loadstring(game:HttpGet("${rawUrl}"))()`;
+    status.textContent = "完了";
+  } catch (e) {
+    status.textContent = "エラー: " + e.message;
+  }
+});
+
+document.getElementById("copy").addEventListener("click", async () => {
+  const result = document.getElementById("result");
+  if (!result.value) return;
+  await navigator.clipboard.writeText(result.value);
+  document.getElementById("status").textContent = "コピーしました";
+});
+
+document.getElementById("clear").addEventListener("click", () => {
+  document.getElementById("script").value = "";
+  document.getElementById("result").value = "";
+  document.getElementById("status").textContent = "";
+});
+</script>
+</body>
+</html>
